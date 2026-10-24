@@ -1,0 +1,11 @@
+<!--
+  Add this <localfile> block inside <ossec_config> in the Wazuh manager's
+  /var/ossec/etc/ossec.conf, then restart the manager:
+    docker exec -it <wazuh_manager_container> /var/ossec/bin/wazuh-control restart
+-->
+<localfile>
+  <log_format>json</log_format>
+  <only-future-events>no</only-future-events>
+  <location>/var/ossec/logs/crowdstrike/crowdstrike-events.json</location>
+  <label key="@source">crowdstrike</label>
+</localfile>

@@ -1,0 +1,19 @@
+# Add this volume mount to your EXISTING wazuh.manager service definition
+# (in your own wazuh-docker compose file), so the manager container can see
+# the same files the bridge writes.
+#
+# services:
+#   wazuh.manager:
+#     ...
+#     volumes:
+#       - ... # your existing volumes stay as they are
+#       - crowdstrike-wazuh-logs:/var/ossec/logs/crowdstrike
+#
+# volumes:
+#   ...
+#   crowdstrike-wazuh-logs:
+#     external: true   # must match the volume created by the bridge's compose file
+#     name: crowdstrike-wazuh-bridge_crowdstrike-wazuh-logs  # docker compose's default naming: <project>_<volume>
+#
+# Then add the <localfile> block from wazuh-rules/ossec-localfile-snippet.xml
+# into the manager's ossec.conf and restart the manager container.

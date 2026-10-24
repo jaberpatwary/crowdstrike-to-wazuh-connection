@@ -1,0 +1,27 @@
+services:
+  bridge:
+    build: .
+    container_name: crowdstrike-wazuh-bridge
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      WAZUH_OUTPUT_PATH: /var/ossec/logs/crowdstrike/crowdstrike-events.json
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - crowdstrike-wazuh-logs:/var/ossec/logs
+    networks:
+      - default
+      - external_wazuh_network
+
+volumes:
+  crowdstrike-wazuh-logs:
+    external: true
+    name: news-portal-wazuh_wazuh_logs
+
+networks:
+  default:
+  external_wazuh_network:
+    external: true
+    name: news-portal-wazuh_wazuh-net

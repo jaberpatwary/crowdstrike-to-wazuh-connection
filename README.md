@@ -8,7 +8,7 @@ A Go service that consumes CrowdStrike Falcon Event Streams, stores full event h
 - The bridge writes to the host PostgreSQL database configured in .env (wazuh, crowdstrike_events).
 - Compose does not launch a second PostgreSQL server; PG_HOST selects the database the bridge uses.
 - Wazuh tails /var/ossec/logs/crowdstrike/crowdstrike-events.json.
-- The Wazuh manager and dashboard are provided by the sibling news-portal-wazuh Compose project.
+- The Wazuh indexer, manager, and dashboard run in this Compose project and reuse their existing persistent volumes.
 - FDR is optional and currently disabled. It requires CrowdStrike provisioning of an SQS queue and S3 access credentials.
 
 ## Start and monitor
@@ -19,7 +19,7 @@ From this directory, run:
     make status
     make logs
 
-make start starts the Wazuh stack, then builds and starts the bridge. The bridge's health and Prometheus metrics endpoints are bound to localhost only:
+make start builds and starts the Wazuh stack and bridge in this Compose project. The bridge's health and Prometheus metrics endpoints are bound to localhost only:
 
 - Health: http://localhost:18080/healthz
 - Metrics: http://localhost:18080/metrics
@@ -57,6 +57,8 @@ Select wazuh-archives-* to inspect raw CrowdStrike events. Wazuh stores these cu
 ## Configuration
 
 Keep credentials in .env; never commit this file. Start from .env.example on a new machine.
+
+Wazuh runtime credentials, certificates, and service configuration are stored under `wazuh-runtime/`. That folder is git-ignored because it contains secrets and local runtime files.
 
 Required for Event Streams:
 

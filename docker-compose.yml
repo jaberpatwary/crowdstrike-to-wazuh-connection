@@ -1,3 +1,5 @@
+name: crowdstrike-wazuh-bridge
+
 services:
   bridge:
     build: .
@@ -11,17 +13,145 @@ services:
       - "127.0.0.1:18080:8080"
     volumes:
       - crowdstrike-wazuh-logs:/var/ossec/logs
-    networks:
-      - default
-      - external_wazuh_network
+    depends_on:
+      wazuh.manager:
+        condition: service_started
+
+  wazuh.indexer:
+    image: wazuh/wazuh-indexer:4.14.8
+    container_name: wazuh.indexer
+    hostname: wazuh.indexer
+    restart: always
+    env_file:
+      - ./wazuh-runtime/.env.wazuh
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.key:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem:ro
+      - ./wazuh-runtime/config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml:ro
+      - ./wazuh-runtime/config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -k -s -u admin:$${INDEXER_PASSWORD} https://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  wazuh.manager:
+    image: wazuh/wazuh-manager:4.14.8
+    container_name: wazuh.manager
+    hostname: wazuh.manager
+    restart: always
+    depends_on:
+      wazuh.indexer:
+        condition: service_healthy
+    env_file:
+      - ./wazuh-runtime/.env.wazuh
+    ports:
+      - "127.0.0.1:1514:1514/tcp"
+      - "127.0.0.1:1515:1515/tcp"
+      - "127.0.0.1:514:514/udp"
+      - "127.0.0.1:55000:55000/tcp"
+    environment:
+      INDEXER_URL: https://wazuh.indexer:9200
+      SSL_CERTIFICATE_AUTHORITIES: /etc/ssl/root-ca.pem
+      SSL_CERTIFICATE: /etc/ssl/filebeat.pem
+      SSL_KEY: /etc/ssl/filebeat.key
+    volumes:
+      - wazuh-api-configuration:/var/ossec/api/configuration
+      - wazuh-etc:/var/ossec/etc
+      - crowdstrike-wazuh-logs:/var/ossec/logs
+      - wazuh-queue:/var/ossec/queue
+      - wazuh-integrations:/var/ossec/integrations
+      - wazuh-active-response:/var/ossec/active-response/bin
+      - wazuh-agentless:/var/ossec/agentless
+      - wazuh-wodles:/var/ossec/wodles
+      - filebeat-etc:/etc/filebeat
+      - filebeat-var:/var/lib/filebeat
+      - wazuh-var-multigroups:/var/ossec/var/multigroups
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem:ro
+      - ./wazuh-runtime/logs:/var/log/news-portal
+      - ./wazuh-rules/local_rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.manager.pem:/etc/ssl/filebeat.pem:ro
+      - ./wazuh-runtime/config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf:ro
+
+  wazuh.dashboard:
+    image: wazuh/wazuh-dashboard:4.14.8
+    container_name: wazuh.dashboard
+    hostname: wazuh.dashboard
+    restart: always
+    depends_on:
+      wazuh.indexer:
+        condition: service_healthy
+      wazuh.manager:
+        condition: service_started
+    env_file:
+      - ./wazuh-runtime/.env.wazuh
+    ports:
+      - "127.0.0.1:8443:5601"
+    environment:
+      WAZUH_API_URL: https://wazuh.manager
+    volumes:
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem:ro
+      - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem:ro
+      - ./wazuh-runtime/config/wazuh_dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
+      - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
+      - ./wazuh-runtime/config/wazuh_dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml:ro
+      - wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
 
 volumes:
   crowdstrike-wazuh-logs:
     external: true
     name: news-portal-wazuh_wazuh_logs
-
-networks:
-  default:
-  external_wazuh_network:
+  wazuh-indexer-data:
     external: true
-    name: news-portal-wazuh_wazuh-net
+    name: news-portal-wazuh_wazuh-indexer-data
+  wazuh-api-configuration:
+    external: true
+    name: news-portal-wazuh_wazuh_api_configuration
+  wazuh-etc:
+    external: true
+    name: news-portal-wazuh_wazuh_etc
+  wazuh-queue:
+    external: true
+    name: news-portal-wazuh_wazuh_queue
+  wazuh-integrations:
+    external: true
+    name: news-portal-wazuh_wazuh_integrations
+  wazuh-active-response:
+    external: true
+    name: news-portal-wazuh_wazuh_active_response
+  wazuh-agentless:
+    external: true
+    name: news-portal-wazuh_wazuh_agentless
+  wazuh-wodles:
+    external: true
+    name: news-portal-wazuh_wazuh_wodles
+  filebeat-etc:
+    external: true
+    name: news-portal-wazuh_filebeat_etc
+  filebeat-var:
+    external: true
+    name: news-portal-wazuh_filebeat_var
+  wazuh-var-multigroups:
+    external: true
+    name: news-portal-wazuh_wazuh_var_multigroups
+  wazuh-dashboard-config:
+    external: true
+    name: news-portal-wazuh_wazuh-dashboard-config
+  wazuh-dashboard-custom:
+    external: true
+    name: news-portal-wazuh_wazuh-dashboard-custom

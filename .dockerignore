@@ -1,0 +1,5 @@
+.git
+.env
+.env.*
+wazuh-runtime/
+wazuh-rules/

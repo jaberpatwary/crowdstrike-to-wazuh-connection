@@ -5,10 +5,10 @@ A Go service that consumes CrowdStrike Falcon Event Streams, stores full event h
 ## Current setup
 
 - Event Streams is enabled and connected.
-- The bridge writes to the host PostgreSQL database configured in .env (wazuh, crowdstrike_events).
-- Compose does not launch a second PostgreSQL server; PG_HOST selects the database the bridge uses.
+- The bridge writes to the project-local PostgreSQL service (database `wazuh`, table `crowdstrike_events`).
+- PostgreSQL and Wazuh persistent data are stored under the git-ignored `wazuh-runtime/data/` directory.
 - Wazuh tails /var/ossec/logs/crowdstrike/crowdstrike-events.json.
-- The Wazuh indexer, manager, and dashboard run in this Compose project and reuse their existing persistent volumes.
+- The Wazuh indexer, manager, and dashboard run in this Compose project and use project-local bind-mounted data.
 - FDR is optional and currently disabled. It requires CrowdStrike provisioning of an SQS queue and S3 access credentials.
 
 ## Start and monitor
@@ -30,7 +30,7 @@ The Wazuh Dashboard is at https://localhost:8443.
 
 ### PostgreSQL / pgAdmin
 
-Refresh the wazuh database in pgAdmin, then open public.crowdstrike_events. The bridge creates this table on startup. Useful Query Tool SQL:
+Open a PostgreSQL shell in the project-local database with `docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'`, then inspect `public.crowdstrike_events`. The bridge creates this table on startup. Useful SQL:
 
     SELECT COUNT(*), MAX(ingested_at) FROM crowdstrike_events;
 
@@ -39,7 +39,7 @@ Refresh the wazuh database in pgAdmin, then open public.crowdstrike_events. The 
     ORDER BY ingested_at DESC
     LIMIT 50;
 
-Use the values in .env for the database connection. From the bridge container, the host database address is host.docker.internal, not localhost.
+Compose connects the bridge to the `postgres` service on the internal Compose network.
 
 ### Wazuh Dashboard
 
@@ -58,7 +58,7 @@ Select wazuh-archives-* to inspect raw CrowdStrike events. Wazuh stores these cu
 
 Keep credentials in .env; never commit this file. Start from .env.example on a new machine.
 
-Wazuh runtime credentials, certificates, and service configuration are stored under `wazuh-runtime/`. That folder is git-ignored because it contains secrets and local runtime files.
+Wazuh runtime credentials, certificates, service configuration, backups, and persistent data are stored under `wazuh-runtime/`. That folder is git-ignored because it contains secrets and local runtime files.
 
 Required for Event Streams:
 
@@ -66,7 +66,7 @@ Required for Event Streams:
 - CS_BASE_URL matching the Falcon cloud region.
 - EVENT_STREAMS_ENABLED=true.
 
-PostgreSQL settings use the PG_* variables. The configured PostgreSQL server must accept connections from Docker. The current host PostgreSQL connection is host.docker.internal:5432.
+PostgreSQL settings use the PG_* variables. Compose runs PostgreSQL 17 as a local service and stores its data under `wazuh-runtime/data/postgres`.
 
 Detection delivery uses a PostgreSQL outbox. Pending rows are retried periodically after write failures or restarts, and repeated copies of the same source payload reuse the same event row. File delivery is at-least-once: a process crash after writing the file but before recording success can produce a duplicate Wazuh line.
 

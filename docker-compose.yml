@@ -9,13 +9,32 @@ services:
       - .env
     environment:
       WAZUH_OUTPUT_PATH: /var/ossec/logs/crowdstrike/crowdstrike-events.json
+      PG_HOST: postgres
     ports:
       - "127.0.0.1:18080:8080"
     volumes:
-      - crowdstrike-wazuh-logs:/var/ossec/logs
+      - ./wazuh-runtime/data/wazuh-logs:/var/ossec/logs
     depends_on:
       wazuh.manager:
         condition: service_started
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: crowdstrike-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PG_DATABASE}
+      POSTGRES_USER: ${PG_USER}
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+    volumes:
+      - ./wazuh-runtime/data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.14.8
@@ -34,7 +53,7 @@ services:
     ports:
       - "127.0.0.1:9200:9200"
     volumes:
-      - wazuh-indexer-data:/var/lib/wazuh-indexer
+      - ./wazuh-runtime/data/wazuh-indexer-data:/var/lib/wazuh-indexer
       - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem:ro
       - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem:ro
       - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem:ro
@@ -43,7 +62,7 @@ services:
       - ./wazuh-runtime/config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml:ro
       - ./wazuh-runtime/config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -k -s -u admin:$${INDEXER_PASSWORD} https://localhost:9200/_cluster/health | grep -q 'green\\|yellow'"]
+      test: ["CMD-SHELL", "curl -k -s -u admin:$${INDEXER_PASSWORD} https://localhost:9200/_cluster/health | grep -q 'green'"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -69,17 +88,17 @@ services:
       SSL_CERTIFICATE: /etc/ssl/filebeat.pem
       SSL_KEY: /etc/ssl/filebeat.key
     volumes:
-      - wazuh-api-configuration:/var/ossec/api/configuration
-      - wazuh-etc:/var/ossec/etc
-      - crowdstrike-wazuh-logs:/var/ossec/logs
-      - wazuh-queue:/var/ossec/queue
-      - wazuh-integrations:/var/ossec/integrations
-      - wazuh-active-response:/var/ossec/active-response/bin
-      - wazuh-agentless:/var/ossec/agentless
-      - wazuh-wodles:/var/ossec/wodles
-      - filebeat-etc:/etc/filebeat
-      - filebeat-var:/var/lib/filebeat
-      - wazuh-var-multigroups:/var/ossec/var/multigroups
+      - ./wazuh-runtime/data/wazuh-api-configuration:/var/ossec/api/configuration
+      - ./wazuh-runtime/data/wazuh-etc:/var/ossec/etc
+      - ./wazuh-runtime/data/wazuh-logs:/var/ossec/logs
+      - ./wazuh-runtime/data/wazuh-queue:/var/ossec/queue
+      - ./wazuh-runtime/data/wazuh-integrations:/var/ossec/integrations
+      - ./wazuh-runtime/data/wazuh-active-response:/var/ossec/active-response/bin
+      - ./wazuh-runtime/data/wazuh-agentless:/var/ossec/agentless
+      - ./wazuh-runtime/data/wazuh-wodles:/var/ossec/wodles
+      - ./wazuh-runtime/data/filebeat-etc:/etc/filebeat
+      - ./wazuh-runtime/data/filebeat-var:/var/lib/filebeat
+      - ./wazuh-runtime/data/wazuh-var-multigroups:/var/ossec/var/multigroups
       - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem:ro
       - ./wazuh-runtime/logs:/var/log/news-portal
       - ./wazuh-rules/local_rules.xml:/var/ossec/etc/rules/local_rules.xml:ro
@@ -108,50 +127,6 @@ services:
       - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem:ro
       - ./wazuh-runtime/config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem:ro
       - ./wazuh-runtime/config/wazuh_dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
-      - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
+      - ./wazuh-runtime/data/wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
       - ./wazuh-runtime/config/wazuh_dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml:ro
-      - wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
-
-volumes:
-  crowdstrike-wazuh-logs:
-    external: true
-    name: news-portal-wazuh_wazuh_logs
-  wazuh-indexer-data:
-    external: true
-    name: news-portal-wazuh_wazuh-indexer-data
-  wazuh-api-configuration:
-    external: true
-    name: news-portal-wazuh_wazuh_api_configuration
-  wazuh-etc:
-    external: true
-    name: news-portal-wazuh_wazuh_etc
-  wazuh-queue:
-    external: true
-    name: news-portal-wazuh_wazuh_queue
-  wazuh-integrations:
-    external: true
-    name: news-portal-wazuh_wazuh_integrations
-  wazuh-active-response:
-    external: true
-    name: news-portal-wazuh_wazuh_active_response
-  wazuh-agentless:
-    external: true
-    name: news-portal-wazuh_wazuh_agentless
-  wazuh-wodles:
-    external: true
-    name: news-portal-wazuh_wazuh_wodles
-  filebeat-etc:
-    external: true
-    name: news-portal-wazuh_filebeat_etc
-  filebeat-var:
-    external: true
-    name: news-portal-wazuh_filebeat_var
-  wazuh-var-multigroups:
-    external: true
-    name: news-portal-wazuh_wazuh_var_multigroups
-  wazuh-dashboard-config:
-    external: true
-    name: news-portal-wazuh_wazuh-dashboard-config
-  wazuh-dashboard-custom:
-    external: true
-    name: news-portal-wazuh_wazuh-dashboard-custom
+      - ./wazuh-runtime/data/wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom

@@ -42,4 +42,7 @@
     <description>CrowdStrike Falcon: low severity detection on $(crowdstrike_hostname)</description>
     <group>crowdstrike_detection,</group>
   </rule>
+  <rule id="502" level="0" overwrite="yes">
+    <description>Suppress routine Wazuh server started message</description>
+  </rule>
 </group>
